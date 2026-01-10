@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TweetXer
 // @namespace    https://github.com/lucahammer/tweetXer/
-// @version      0.9.3
+// @version      0.9.4
 // @description  Delete all your Tweets for free.
 // @author       Luca,dbort,pReya,Micolithe,STrRedWolf
 // @license      NoHarm-draft
@@ -19,7 +19,7 @@
 
 (function () {
     let TweetsXer = {
-        version: '0.9.3',
+        version: '0.9.4',
         TweetCount: 0,
         dId: "exportUpload",
         tIds: [],
@@ -202,13 +202,13 @@
             div.id = this.dId
             if (document.getElementById(this.dId)) { document.getElementById(this.dId).remove() }
             div.innerHTML = `
-            <style>#${this.dId}{ z-index:99999; position: sticky; top:0px; left:0px; width:auto; margin:0 auto; padding: 20px 10%; background:#87CEFA; opacity:0.9; } #${this.dId} > *{padding:5px;}</style>
+            <style>#${this.dId}{ z-index:99999; position: sticky; top:0px; left:0px; width:auto; margin:0 auto; padding: 20px 10%; background:#87CEFA; opacity:0.95; } #${this.dId} > *{padding:5px;} button{background-color:#eff3f4;border-radius:666px;padding:2px 10px;} a {color:blue;}</style>
             <div style="color:black">
                 <h2 class="${h2Class}" id="tweetsXer_title">TweetXer</h2>
                 <p id="info">Please wait for your profile to load. If this message doesn't go away after some seconds, something isn't working.</p>
                 <p id="start">
                     <input type="file" value="" id="${this.dId}_file"  />
-                    <a style="color:blue" href="#" id="toggleAdvanced">Advanced Options</a>
+                    <a href="#" id="toggleAdvanced">Advanced Options</a>
                 <div id="advanced" style="display:none">
                     <label for="skipCount">Enter how many Tweets to skip before selecting a file.</label>
                     <input id="skipCount" type="number" value="" />
@@ -220,18 +220,18 @@
                     </ul>
                     <p><strong>Export bookmarks</strong><br>
                         Bookmarks are not included in the official data export. You can export them here.
-                        <input id="exportBookmarks" type="button" value="Export Bookmarks" />
+                        <button id="exportBookmarks" type="button">Export Bookmarks</button>
                     </p>
                     <p><strong>No tweet-headers.js?</strong><br>
                         If you are unable to get your data export, you can use the following option.<br>
                         This option is much slower and less reliable. It can remove at most 4000 Tweets per hour.<br>
-                        <input id="slowDelete" type="button" value="Slow delete without file" />
+                        <button id="slowDelete" type="button">Slow delete without file</button>
                     </p>
                     <p><strong>Unfollow everyone</strong><br>
                         It's time to let go. This will unfollow everyone you follow.<br>
-                        <input id="unfollowEveryone" type="button" value="Unfollow everyone" />
+                        <button id="unfollowEveryone" type="button">Unfollow everyone</button>
                     </p>
-                    <p><a id="removeTweetXer" style="color:blue" href="#">Remove TweetXer</a></p>
+                    <p><a id="removeTweetXer" href="#">Remove TweetXer</a></p>
                     <p><small>${TweetsXer.version}</small></p>
                 </div>
             </div>
