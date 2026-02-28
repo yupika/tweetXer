@@ -723,7 +723,7 @@
 
         async slowDelete() {
             //document.getElementById("toggleAdvanced").click()
-            document.getElementById('start').remove()
+            document.getElementById('start')?.remove()
             TweetsXer.total = TweetsXer.TweetCount
             TweetsXer.createProgressBar()
 
