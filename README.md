@@ -1,107 +1,97 @@
-# tweetXer – eXterminate your Tweets
+# tweetXer 日本語版 – ツイートを一括削除
 
-You can use [this script](https://raw.githubusercontent.com/lucahammer/tweetXer/refs/heads/main/tweetXer.js) to delete all your Tweets. Even if they don't show up on your profile. But you need your Data Export for it to work.
-Because this automates the deletion, it may get your account banned. Not a bad outcome.
+[このスクリプト](https://raw.githubusercontent.com/yupika/tweetXer/refs/heads/main/tweetXer.js)を使って、すべてのツイートを削除できます。プロフィールに表示されていないツイートも削除可能です。ただし、データエクスポートが必要です。
+削除を自動化するため、アカウントがBANされる可能性があります。それも悪くない結末かもしれません。
 
-## Translations
+> **オリジナル**: [lucahammer/tweetXer](https://github.com/lucahammer/tweetXer)
+>
+> この日本語版では、UIの完全日本語化に加え、以下の改良を含んでいます:
+> - レジューム機能（中断しても続きから再開可能）
+> - 429レート制限エラーの適切な処理
+> - エラーハンドリングの修正（スクリプトが停止する問題の解消）
+> - スキップカウンター（削除済みツイートの自動スキップ＆カウント）
 
-[Portuguese (Brazil)](https://github.com/arielgmelo/tweetXer-ptbr)
+## 使い方
 
-## Video tutorial
+0. Xのデータエクスポートを[リクエスト](https://x.com/settings/your_twitter_data/data)します（数日かかります）。届いたらダウンロードして解凍してください
+1. Twitterアカウントにログイン
+2. ブラウザの開発者コンソールを開く（F12 または cmd+option+i）
+3. [スクリプト全文](https://raw.githubusercontent.com/yupika/tweetXer/main/tweetXer.js)をコンソールに貼り付けてEnter
+4. 画面上部に水色のバーが表示されます
+5. ファイル選択で tweet-headers.js または tweets.js を選択
+6. すべてのツイートが削除されるまで待ちます（毎秒5〜10件程度）
 
-[![Youtube player preview showing a screenrecording: Left half is a firefox with twitter.com open and and open console. Right side is a code editor with bullet points and a person looking at the viewer with animated blue birds flying around their head.](https://img.youtube.com/vi/jB1-z6LbX5w/0.jpg)](https://www.youtube.com/watch?v=jB1-z6LbX5w)
+途中で中断された場合、**自動的にレジューム機能が働きます**。次回スクリプトを実行すると「前回の進捗が見つかりました」というバナーが表示され、「続きから再開」または「破棄して最初から」を選べます。
 
-English: [youtube.com/watch?v=jB1-z6LbX5w](https://www.youtube.com/watch?v=jB1-z6LbX5w)
+## コピペの代わりに: ユーザースクリプト
 
-German: [youtube.com/watch?v=HmQ7_ZgVNxg](https://www.youtube.com/watch?v=HmQ7_ZgVNxg)
+スクリプトをコピペする代わりに、ユーザースクリプトとしてインストールできます: [greasyfork.org/en/scripts/476062-tweetxer](https://greasyfork.org/en/scripts/476062-tweetxer)（[Violentmonkey](https://addons.mozilla.org/firefox/addon/violentmonkey/)、[FireMonkey](https://addons.mozilla.org/firefox/addon/firemonkey/)、[Tampermonkey](https://addons.mozilla.org/firefox/addon/tampermonkey/) などのブラウザ拡張で動作）
 
-# Usage
-0.  [Request](https://x.com/settings/your_twitter_data/data) (takes several days) and download your Data Export and unzip it
-1.  Log into your Twitter account
-2.  Open the browser console (F12 or cmd+option+i)
-3.  Paste the [whole script](https://raw.githubusercontent.com/lucahammer/tweetXer/main/tweetXer.js) into the console and press enter
-4.  A light blue bar appears at the top of the window
-5.  Use the file picker to select your tweet-headers.js or tweets.js file
-6.  Wait for all your Tweets to vanish (about 5-10 Tweets per second)
+スマートフォンでも使えます。
 
-If the process is interrupted at any time, you can use the advanced options to enter how many Tweets have been deleted in the previous run to not start at zero again. The script will try to automatically detect if it was run before by calculating the difference between Tweets in the file and the Tweet count on the profile. If there is a difference it will try to automatically skip that amount (+5% buffer). If you want it to start from the beginning, open 'Advanced options' and enter 1 instead of 0. It will then skip exactly one Tweet and not try to calculate an amount.
+### Android
 
-# Alternative to copy & paste: userscript
+1. [Firefox Mobile](https://www.mozilla.org/firefox/browsers/mobile/) をインストール
+2. [Tampermonkey アドオン](https://addons.mozilla.org/firefox/addon/tampermonkey/) をインストール
+3. [Greasyfork からスクリプト](https://greasyfork.org/en/scripts/476062-tweetxer) をインストール
+4. X.com を開くと水色のバーが表示されます。Xアプリを先にアンインストールする必要があるかもしれません
 
-Instead of copy-pasting the script, you can install it as a userscript: [greasyfork.org/en/scripts/476062-tweetxer](https://greasyfork.org/en/scripts/476062-tweetxer) (works with eg. [Violentmonkey](https://addons.mozilla.org/firefox/addon/violentmonkey/), [FireMonkey](https://addons.mozilla.org/firefox/addon/firemonkey/) or [tampermonkey](https://addons.mozilla.org/firefox/addon/tampermonkey/) browser addon)
+### iOS (iPhone/iPad)
 
-The userscript works on smartphones as well.
+1. Safari拡張 [Userscripts](https://apps.apple.com/app/userscripts/id1463298887) をインストール
+2. SafariでUserscriptsを有効化
+3. TweetXerユーザースクリプトを追加: New remote https://update.greasyfork.org/scripts/476062/TweetXer.user.js
+4. X.com にアクセス
+5. Userscripts拡張にX.comへのアクセスを許可
 
-## Android
+## 仕組み
 
-1. Install [Firefox Mobile](https://www.mozilla.org/firefox/browsers/mobile/)
-2. Install the [Tampermonkey addon](https://addons.mozilla.org/firefox/addon/tampermonkey/)
-3. Install the [script from greasyfork](https://greasyfork.org/en/scripts/476062-tweetxer)
-4. Open X com and the blue bar should show up. You may need to uninstall the X-App before.
+信頼できないソースからこのようなスクリプトを使わないでください。このスクリプトは、ブラウザからTwitterへのリクエストを傍受し、ツイートIDをあなたの tweets.js ファイルのIDに置き換えます。これにより古いツイートにアクセスして削除できます。
 
-[Video tutorial for Android](https://www.youtube.com/watch?v=Z-MeTaRq6xM)
+## おまけ: ブックマークのエクスポート
 
-## iOS (iPhone/iPad)
+ブックマークはTwitterデータエクスポートに含まれないため、「詳細オプション」にエクスポートボタンがあります。
 
-1. Install the safari extension [Userscripts](https://apps.apple.com/app/userscripts/id1463298887)
-2. Enable userscripts in Safari
-3. Add the TweetXer userscript: New remote https://update.greasyfork.org/scripts/476062/TweetXer.user.js
-4. Visit X com
-5. Allow the extension Userscripts to access X com
+## おまけ: データエクスポートなしでツイート削除
 
-# How it works
+何らかの理由でデータエクスポートが使えない場合や、一部のツイートが漏れている場合は、「詳細オプション」の低速モードを使えます。プロフィール上のツイートを読み込んでから削除するため、非常に遅いです。
 
-Never use something like this from an untrusted source. The script intercepts requests from your browser to Twitter and replaces the Tweet-IDs
-with IDs from your tweets.js file. This allows it to access the old Tweets and delete them.
+## おまけ: DM（ダイレクトメッセージ）の削除
 
-XHR interception inspired by [github.com/ttodua/Tamper-Request-Javascript-Tool](https://github.com/ttodua/Tamper-Request-Javascript-Tool)
+DMを削除するには、tweet-headers.js の代わりに direct-message-header.js を選択します。完了したらページをリロードし、再度スクリプトを実行して direct-message-group-headers.js を選択すると、グループメッセージも削除できます。
 
-Faster deletion inspired by [github.com/Lyfhael/DeleteTweets](https://github.com/Lyfhael/DeleteTweets)
+[元エンジニアによると](https://bsky.app/profile/triketora.com/post/3lcbmqzo4uk25)、全員がDMを削除すればサーバーからも消えるそうです。
 
-# Bonus: Export your bookmarks
+## おまけ: 全員フォロー解除
 
-Because bookmarks aren't included in the Twitter data export, there is a button under "Advanced options" to export them.
+「詳細オプション」から自動的に全員のフォローを解除できます。レート制限のため、時間を空けて複数回実行する必要があるかもしれません。
 
-# Bonus: Tweet deletion without data export
+## よくある問題と解決策
 
-If for some reason you can't use your data export or it missed some Tweets, you can use slow mode under "Advanced options". Be warned, it is very slow because it has to load the Tweets on your profile first to delete them and there are various request limits for that.
+- **スクリプトが貼り付けられない**
 
-# Bonus: Delete Direct Messages
+  ブラウザがランダムなスクリプトの貼り付けからあなたを保護しています。「allow pasting」と入力してEnterを押し、理解した上で操作していることを確認してください。
 
-To delete DMs, you select the direct-message-header.js file instead of the tweet-headers.js file. Once it's done, reload the page, paste TweetXer into the console again and select the direct-message-group-headers.js file to remove message groups. If the process gets interrupted for whatever reason, you can enter how many messages where deleted before under "Advanced options" before selcting the file.
+- **Xがデータエクスポートを送ってくれない**
 
-[According to former engineers](https://bsky.app/profile/triketora.com/post/3lcbmqzo4uk25), DMs are removed from the server if all sides remove them from their inbox.
+  [プライバシーフォーム](https://help.x.com/en/forms/privacy/request-account-info/me)からリクエストしてみてください。
 
-# Bonus: Unfollow everyone
+- **すべてのツイートが削除されなかった**
 
-Under "Advanced options" you can automatically unfollow everyone. You may need to rerun with some time in between because of rate limits.
+  残っているツイートのIDがデータエクスポートに含まれているか確認してください。スクリプトはファイルに含まれるもののみ削除できます。「詳細オプション」に残りのツイートを自動削除する機能がありますが、非常に遅いです。ツイートが多い場合は再実行するか、新しいエクスポートをリクエストしてください。
 
-# Known issues and solutions
+- **プロフィールにツイートが表示されないのに、ツイート数が残っている**
 
-- I can't paste the script.
+  ほとんどの場合、凍結やBANされたアカウントのリツイートです。アカウントが復活すると再表示されることもありますが、されないこともあります。対処法はありません。
 
-  Your browser tries to protect you from pasting some random script you found. Type "allow pasting" (Firefox) or "allow pasting" (Chrome) and hit enter to confirm that you know what you are doing.
+- **いいねが削除されない**
 
-- X Corp doesn't send me my data export.
+  直近の数百件のみ削除可能です。手動でも同様です。アカウント全体を削除する以外に方法はありません。
 
-Try requesting it through their [Privacy Form](https://help.x.com/en/forms/privacy/request-account-info/me).
+- **ブラウザがクラッシュする**
 
-- Not all Tweets got removed.
+  ChromeやChromium系ブラウザで起きやすいです。特に15,000件以上のツイートを削除する場合。実行中にコンソールを閉じるとクラッシュが減ることがあります。
 
-Check if the ID of the remaining Tweet is in your data export. The script can only remove what's in the file. There is a option to automatically remove remaining Tweets under "Advanced options" but it is very slow. If there are many Tweets, re-run the script. Maybe request a new export.
+- **うまくいった！感謝したい**
 
-- No Tweets are visible on the profile, but Tweet count shows there are still Tweets left.
-
-In most cases those are Retweets from Tweets from accounts that got deactivated or banned. Sometimes the Tweets reappear once the accounts come back, sometimes they don't. There is nothing you can do.
-
-- Likes aren't removed.
-
-Only the last few hundred can be be removed. Even by hand. There is nothing you can do other than deleting your whole account. Or reliking Tweets to unlike them afterwards which will probably get your account locked for spamming.
-
-- Browser crashes
-
-  This happens more often with Chrome and Chrome-based browsers. Especially when removing more than 15 k Tweets. Closing the browser console while it runs seems to reduce the crashes.
-
-- It worked and you are thankful.
-
-Awesome. Share the script on whatever platform you are using now to give others the option to delete their Tweets. Support me to keep creating things like this: [buymeacoffee.com/lucahammer](https://www.buymeacoffee.com/lucahammer)
+  素晴らしい！オリジナル作者をサポート: [buymeacoffee.com/lucahammer](https://www.buymeacoffee.com/lucahammer)
