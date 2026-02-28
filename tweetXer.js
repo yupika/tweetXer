@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TweetXer
 // @namespace    https://github.com/lucahammer/tweetXer/
-// @version      0.9.4
-// @description  Delete all your Tweets for free.
+// @version      0.9.6-jp
+// @description  ツイートを無料で一括削除（429エラー修正 + レジューム機能 + スキップカウンター）
 // @author       Luca,dbort,pReya,Micolithe,STrRedWolf
 // @license      NoHarm-draft
 // @match        https://x.com/*
@@ -19,7 +19,7 @@
 
 (function () {
     let TweetsXer = {
-        version: '0.9.4',
+        version: '0.9.6-jp',
         TweetCount: 0,
         dId: "exportUpload",
         tIds: [],
@@ -29,6 +29,9 @@
         skip: 0,
         total: 0,
         dCount: 0,
+        STORAGE_KEY: 'tweetXer_progress',
+        SAVE_INTERVAL: 50,
+        sCount: 0,  // skipped (404/already deleted) counter
         deleteURL: '/i/api/graphql/VaenaVgh5q5ih7kvyVjgtg/DeleteTweet',
         unfavURL: '/i/api/graphql/ZYKSe-w7KEslx3JhSIk5LA/UnfavoriteTweet',
         deleteMessageURL: '/i/api/graphql/BJ6DtxA2llfjnRoRjaiIiw/DMMessageDeleteMutation',
@@ -48,10 +51,127 @@
             this.baseUrl = `https://${window.location.hostname}`
             this.updateTransactionId()
             this.createUploadForm()
+            this.checkResume()  // ファイル選択より先にレジュームを確認
             await this.getTweetCount()
             this.ct0 = this.getCookie('ct0')
             this.username = document.location.href.split('/')[3].replace('#', '')
         },
+
+        // ---- Resume機能 ----
+        saveProgress() {
+            try {
+                const state = {
+                    tIds: this.tIds,
+                    dCount: this.dCount,
+                    sCount: this.sCount,
+                    total: this.total,
+                    action: this.action,
+                    savedAt: new Date().toISOString()
+                }
+                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(state))
+            } catch (e) {
+                console.log('Failed to save progress:', e)
+            }
+        },
+
+        loadProgress() {
+            try {
+                const raw = localStorage.getItem(this.STORAGE_KEY)
+                if (!raw) return null
+                return JSON.parse(raw)
+            } catch (e) {
+                console.log('Failed to load progress:', e)
+                return null
+            }
+        },
+
+        clearProgress() {
+            try {
+                localStorage.removeItem(this.STORAGE_KEY)
+            } catch (e) {
+                console.log('Failed to clear progress:', e)
+            }
+        },
+
+        checkResume() {
+            const saved = this.loadProgress()
+            if (!saved || !saved.tIds || saved.tIds.length === 0) return
+            console.log(`[tweetXer] Resume data found: ${saved.dCount} deleted, ${saved.tIds.length} remaining`)
+
+            const elapsed = Date.now() - new Date(saved.savedAt).getTime()
+            const hoursAgo = (elapsed / 1000 / 60 / 60).toFixed(1)
+            const remaining = saved.tIds.length
+            const skipped = saved.sCount || 0
+
+            // ファイル選択を無効化（誤操作防止）
+            const fileInput = document.getElementById(`${this.dId}_file`)
+            if (fileInput) fileInput.disabled = true
+
+            const resumeDiv = document.createElement('div')
+            resumeDiv.id = 'tweetXer_resume'
+            resumeDiv.style = 'background:#FFD700;padding:10px;margin:5px 0;border-radius:8px;color:black;'
+            resumeDiv.innerHTML = `
+                <p><strong>⚡ 前回の進捗が見つかりました</strong></p>
+                <p>${saved.dCount}件削除済み${skipped > 0 ? ` / ${skipped}件スキップ済み` : ''} / 残り${remaining}件 (${hoursAgo}時間前に中断)</p>
+                <p>アクション: ${saved.action}</p>
+                <button id="tweetXer_resumeBtn" style="background:#4CAF50;color:white;border:none;border-radius:666px;padding:5px 15px;margin-right:10px;cursor:pointer;">続きから再開</button>
+                <button id="tweetXer_discardBtn" style="background:#f44336;color:white;border:none;border-radius:666px;padding:5px 15px;cursor:pointer;">破棄して最初から</button>
+            `
+            const container = document.getElementById(this.dId)
+            // info要素の前（＝タイトル直後）に挿入して目立つ位置に
+            const titleElem = document.getElementById('tweetsXer_title')
+            if (titleElem && titleElem.nextSibling) {
+                container.querySelector('div').insertBefore(resumeDiv, titleElem.nextSibling)
+            } else {
+                container.appendChild(resumeDiv)
+            }
+
+            document.getElementById('tweetXer_resumeBtn').addEventListener('click', () => {
+                resumeDiv.remove()
+                TweetsXer.resumeFromSaved(saved)
+            })
+            document.getElementById('tweetXer_discardBtn').addEventListener('click', () => {
+                TweetsXer.clearProgress()
+                resumeDiv.remove()
+                if (fileInput) fileInput.disabled = false
+                TweetsXer.updateInfo('進捗を破棄しました。ファイルを選択して最初からどうぞ。')
+            })
+        },
+
+        async resumeFromSaved(saved) {
+            // ct0とusernameがまだ設定されてない場合は待つ（init完了待ち）
+            while (!this.ct0 || !this.username) {
+                console.log('[tweetXer] Waiting for init to complete...')
+                await this.sleep(500)
+            }
+
+            this.tIds = saved.tIds
+            this.dCount = saved.dCount
+            this.sCount = saved.sCount || 0
+            this.total = saved.total
+            this.action = saved.action
+
+            document.getElementById(`${this.dId}_file`)?.remove()
+            this.createProgressBar()
+
+            console.log(`[tweetXer] Resuming: ${this.tIds.length} items remaining, ${this.dCount} already deleted`)
+
+            if (this.action === 'untweet') {
+                this.updateTitle(`TweetXer: 再開中 - 残り${this.tIds.length}件のツイート`)
+                await this.deleteTweets()
+            } else if (this.action === 'unfav') {
+                this.updateTitle(`TweetXer: 再開中 - 残り${this.tIds.length}件のいいね`)
+                await this.deleteFavs()
+            } else if (this.action === 'undm') {
+                this.updateTitle(`TweetXer: 再開中 - 残り${this.tIds.length}件のDM`)
+                if (this.deleteDMsOneByOne) {
+                    await this.deleteDMs()
+                } else {
+                    await this.deleteConvos()
+                }
+            }
+        },
+        // ---- Resume機能 ここまで ----
 
         sleep(ms) {
             return new Promise((resolve) => setTimeout(resolve, ms))
@@ -87,8 +207,10 @@
         },
 
         updateProgressBar() {
-            document.getElementById('progressbar').value = this.dCount
-            this.updateInfo(`${this.dCount} deleted. ${this.tId}`)
+            document.getElementById('progressbar').value = this.dCount + this.sCount
+            const parts = [`${this.dCount}件削除`]
+            if (this.sCount > 0) parts.push(`${this.sCount}件スキップ`)
+            this.updateInfo(`${parts.join(' / ')}  ${this.tId}`)
         },
 
         processFile() {
@@ -134,8 +256,8 @@
                         }
 
                     } else {
-                        TweetsXer.updateInfo('File content not recognized. Please use a file from the Twitter data export.')
-                        console.log('File content not recognized. Please use a file from the Twitter data export.')
+                        TweetsXer.updateInfo('ファイル内容を認識できません。Twitterデータエクスポートのファイルを使用してください。')
+                        console.log('ファイル内容を認識できません。Twitterデータエクスポートのファイルを使用してください。')
                     }
 
                     if (TweetsXer.action.length > 0) {
@@ -145,23 +267,22 @@
                     }
 
                     if (TweetsXer.action == 'untweet') {
-                        if (document.getElementById('skipCount').value.length < 1) {
-                            // If there is no amount set to skip, automatically try to skip the amount
-                            // that has been deleted already. Difference of Tweeets in file to count on profile
-                            // 5% tolerance to prevent skipping too much
-                            TweetsXer.skip = TweetsXer.total - TweetsXer.TweetCount - parseInt(TweetsXer.total / 20)
-                            TweetsXer.skip = Math.max(0, TweetsXer.skip)
+                        // Manual skip only (Advanced Optionsで明示的に入力した場合のみ)
+                        TweetsXer.skip = document.getElementById('skipCount').value.length > 0
+                            ? parseInt(document.getElementById('skipCount').value)
+                            : 0
+                        if (TweetsXer.skip > 0) {
+                            console.log(`Skipping oldest ${TweetsXer.skip} Tweets (manual).`)
+                        } else {
+                            console.log(`Processing all ${TweetsXer.total} Tweets. Already-deleted ones will be skipped automatically (404).`)
                         }
-                        else {
-                            TweetsXer.skip = document.getElementById('skipCount').value
-                        }
-                        console.log(`Skipping oldest ${TweetsXer.skip} Tweets. Use advanced options to manually set how many to skip. Enter 0 to prevent the automatic calculation.`)
                         TweetsXer.tIds.reverse()
                         TweetsXer.tIds = TweetsXer.tIds.slice(TweetsXer.skip)
                         TweetsXer.dCount = TweetsXer.skip
                         TweetsXer.tIds.reverse()
-                        TweetsXer.updateTitle(`TweetXer: Deleting ${TweetsXer.total} Tweets`)
+                        TweetsXer.updateTitle(`TweetXer: ${TweetsXer.total}件のツイートを削除中`)
 
+                        TweetsXer.saveProgress()
                         TweetsXer.deleteTweets()
                     } else if (TweetsXer.action == 'unfav') {
                         TweetsXer.skip = document.getElementById('skipCount').value.length > 0 ? document.getElementById('skipCount').value : 0
@@ -169,7 +290,8 @@
                         TweetsXer.tIds = TweetsXer.tIds.slice(TweetsXer.skip)
                         TweetsXer.dCount = TweetsXer.skip
                         TweetsXer.tIds.reverse()
-                        TweetsXer.updateTitle(`TweetXer: Deleting ${TweetsXer.total} Favs`)
+                        TweetsXer.updateTitle(`TweetXer: ${TweetsXer.total}件のいいねを削除中`)
+                        TweetsXer.saveProgress()
                         TweetsXer.deleteFavs()
                     } else if (TweetsXer.action == 'undm') {
                         TweetsXer.skip = document.getElementById('skipCount').value.length > 0 ? document.getElementById('skipCount').value : 0
@@ -178,17 +300,19 @@
                         TweetsXer.dCount = TweetsXer.skip
                         TweetsXer.tIds.reverse()
                         if (this.deleteDMsOneByOne) {
-                            TweetsXer.updateTitle(`TweetXer: Deleting ${TweetsXer.total} DMs`)
+                            TweetsXer.updateTitle(`TweetXer: ${TweetsXer.total}件のDMを削除中`)
+                            TweetsXer.saveProgress()
                             TweetsXer.deleteDMs()
                         }
                         else {
-                            TweetsXer.updateTitle(`TweetXer: Deleting ${TweetsXer.total} DM Conversations`)
+                            TweetsXer.updateTitle(`TweetXer: ${TweetsXer.total}件のDM会話を削除中`)
+                            TweetsXer.saveProgress()
                             TweetsXer.deleteConvos()
                         }
 
                     }
                     else {
-                        TweetsXer.updateTitle(`TweetXer: Please try a different file`)
+                        TweetsXer.updateTitle(`TweetXer: 別のファイルをお試しください`)
                     }
 
                 }
@@ -205,33 +329,33 @@
             <style>#${this.dId}{ z-index:99999; position: sticky; top:0px; left:0px; width:auto; margin:0 auto; padding: 20px 10%; background:#87CEFA; opacity:0.95; } #${this.dId} > *{padding:5px;} button{background-color:#eff3f4;border-radius:666px;padding:2px 10px;} a {color:blue;}</style>
             <div style="color:black">
                 <h2 class="${h2Class}" id="tweetsXer_title">TweetXer</h2>
-                <p id="info">Please wait for your profile to load. If this message doesn't go away after some seconds, something isn't working.</p>
+                <p id="info">プロフィールの読み込みを待っています。数秒経ってもこのメッセージが消えない場合は、何かがうまくいっていません。</p>
                 <p id="start">
                     <input type="file" value="" id="${this.dId}_file"  />
-                    <a href="#" id="toggleAdvanced">Advanced Options</a>
+                    <a href="#" id="toggleAdvanced">詳細オプション</a>
                 <div id="advanced" style="display:none">
-                    <label for="skipCount">Enter how many Tweets to skip before selecting a file.</label>
+                    <label for="skipCount">ファイルを選択する前にスキップするツイート数を入力してください。</label>
                     <input id="skipCount" type="number" value="" />
-                    <p>Supported files:
+                    <p>対応ファイル:
                     <ul>
-                        <li>tweet-headers.js to delete Tweets (10.000 - 20.000 per hour)</li>
-                        <li>direct-message-header.js and direct-message-group-headers.js to delete DMs (around 800 per 15 minutes)</li>
-                        <li>like.js to delete Favs (500 per 15 minutes; only works for the most recent few thousands)</li>
+                        <li>tweet-headers.js でツイートを削除（1時間あたり10,000〜20,000件）</li>
+                        <li>direct-message-header.js / direct-message-group-headers.js でDMを削除（15分あたり約800件）</li>
+                        <li>like.js でいいねを削除（15分あたり500件。直近数千件のみ有効）</li>
                     </ul>
-                    <p><strong>Export bookmarks</strong><br>
-                        Bookmarks are not included in the official data export. You can export them here.
-                        <button id="exportBookmarks" type="button">Export Bookmarks</button>
+                    <p><strong>ブックマークのエクスポート</strong><br>
+                        ブックマークは公式データエクスポートに含まれません。ここでエクスポートできます。
+                        <button id="exportBookmarks" type="button">ブックマークをエクスポート</button>
                     </p>
-                    <p><strong>No tweet-headers.js?</strong><br>
-                        If you are unable to get your data export, you can use the following option.<br>
-                        This option is much slower and less reliable. It can remove at most 4000 Tweets per hour.<br>
-                        <button id="slowDelete" type="button">Slow delete without file</button>
+                    <p><strong>tweet-headers.js がない場合</strong><br>
+                        データエクスポートを取得できない場合は、以下のオプションを使えます。<br>
+                        この方法はかなり遅く、信頼性も低いです。1時間あたり最大4,000件の削除が可能です。<br>
+                        <button id="slowDelete" type="button">ファイルなしで低速削除</button>
                     </p>
-                    <p><strong>Unfollow everyone</strong><br>
-                        It's time to let go. This will unfollow everyone you follow.<br>
-                        <button id="unfollowEveryone" type="button">Unfollow everyone</button>
+                    <p><strong>全員フォロー解除</strong><br>
+                        フォローしている全員のフォローを解除します。<br>
+                        <button id="unfollowEveryone" type="button">全員フォロー解除</button>
                     </p>
-                    <p><a id="removeTweetXer" href="#">Remove TweetXer</a></p>
+                    <p><a id="removeTweetXer" href="#">TweetXerを削除</a></p>
                     <p><small>${TweetsXer.version}</small></p>
                 </div>
             </div>
@@ -254,7 +378,7 @@
         },
 
         async exportBookmarks() {
-            TweetsXer.updateTitle('TweetXer: Exporting bookmarks')
+            TweetsXer.updateTitle('TweetXer: ブックマークをエクスポート中')
             let variables = ''
             while (TweetsXer.bookmarksNext.length > 0 || TweetsXer.bookmarks.length == 0) {
                 if (TweetsXer.bookmarksNext.length > 0) {
@@ -295,7 +419,7 @@
                         }
                     })
                     //document.getElementById('progressbar').setAttribute('value', TweetsXer.dCount)
-                    TweetsXer.updateInfo(`${TweetsXer.dCount} Bookmarks collected`)
+                    TweetsXer.updateInfo(`${TweetsXer.dCount}件のブックマークを取得`)
                 } else {
                     console.log(response)
                 }
@@ -306,7 +430,7 @@
                     let sleeptime = TweetsXer.ratelimitreset - Math.floor(Date.now() / 1000)
                     while (sleeptime > 0) {
                         sleeptime = TweetsXer.ratelimitreset - Math.floor(Date.now() / 1000)
-                        TweetsXer.updateInfo(`Ratelimited. Waiting ${sleeptime} seconds. ${TweetsXer.dCount} deleted.`)
+                        TweetsXer.updateInfo(`レート制限中。あと${sleeptime}秒待機。${TweetsXer.dCount}件削除済み。`)
                         await TweetsXer.sleep(1000)
                     }
                 }
@@ -316,7 +440,7 @@
             })
             let bookmarksDownload = document.createElement("a")
             bookmarksDownload.id = 'bookmarksDownload'
-            bookmarksDownload.innerText = 'Download bookmarks'
+            bookmarksDownload.innerText = 'ブックマークをダウンロード'
             bookmarksDownload.href = window.URL.createObjectURL(download)
             bookmarksDownload.download = 'twitter-bookmarks.json'
             document.getElementById('advanced').appendChild(bookmarksDownload)
@@ -356,10 +480,11 @@
                             console.log('rate limit hit')
                             console.log(response.headers.get('x-rate-limit-remaining'))
                             TweetsXer.ratelimitreset = response.headers.get('x-rate-limit-reset')
+                            TweetsXer.saveProgress()
                             let sleeptime = TweetsXer.ratelimitreset - Math.floor(Date.now() / 1000)
                             while (sleeptime > 0) {
                                 sleeptime = TweetsXer.ratelimitreset - Math.floor(Date.now() / 1000)
-                                TweetsXer.updateInfo(`Ratelimited. Waiting ${sleeptime} seconds. ${TweetsXer.dCount} deleted.`)
+                                TweetsXer.updateInfo(`レート制限中。あと${sleeptime}秒待機。${TweetsXer.dCount}件削除済み。`)
                                 await TweetsXer.sleep(1000)
                             }
                             resolve('deleted and waiting')
@@ -370,25 +495,59 @@
 
 
                     }
+                    // [FIX 1] 429: rate limit reset待ち → x-rate-limit-resetヘッダを使って適切に待機
                     else if (response.status == 429) {
                         TweetsXer.tIds.push(TweetsXer.tId)
-                        console.log('Received status code 429. Waiting for 1 second before trying again.')
-                        await TweetsXer.sleep(1000)
+                        console.log('Received status code 429.')
+                        TweetsXer.saveProgress()
+
+                        let resetHeader = response.headers.get('x-rate-limit-reset')
+                        if (resetHeader) {
+                            let sleeptime = parseInt(resetHeader) - Math.floor(Date.now() / 1000)
+                            sleeptime = Math.max(sleeptime, 30) // 最低30秒は待つ
+                            console.log(`Waiting ${sleeptime} seconds for rate limit reset.`)
+                            while (sleeptime > 0) {
+                                sleeptime = parseInt(resetHeader) - Math.floor(Date.now() / 1000)
+                                TweetsXer.updateInfo(`レート制限中。あと${sleeptime}秒待機。${TweetsXer.dCount}件削除済み。`)
+                                await TweetsXer.sleep(1000)
+                            }
+                        } else {
+                            // ヘッダがない場合は60秒待つ
+                            console.log('No reset header. Waiting 60 seconds.')
+                            let sleeptime = 60
+                            while (sleeptime > 0) {
+                                sleeptime--
+                                TweetsXer.updateInfo(`レート制限中。あと${sleeptime}秒待機。${TweetsXer.dCount}件削除済み。`)
+                                await TweetsXer.sleep(1000)
+                            }
+                        }
+                        resolve('rate_limited')
                     }
+                    // [FIX 2] その他のステータスコードでもresolveする
                     else {
-                        console.log(response)
+                        console.log(`Unexpected status: ${response.status}`, response)
+                        // 既に削除済み(404)などの場合もあるのでスキップして続行
+                        TweetsXer.sCount++
+                        TweetsXer.updateProgressBar()
+                        resolve('skipped')
                     }
 
                 } catch (error) {
-                    if (error.Name === 'AbortError') {
+                    // [FIX 3] error.Name → error.name (小文字)
+                    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
                         TweetsXer.tIds.push(TweetsXer.tId)
                         console.log('Request timeout.')
                         let sleeptime = 15
                         while (sleeptime > 0) {
                             sleeptime--
-                            TweetsXer.updateInfo(`Ratelimited. Waiting ${sleeptime} seconds. ${TweetsXer.dCount} deleted.`)
+                            TweetsXer.updateInfo(`タイムアウト。あと${sleeptime}秒待機。${TweetsXer.dCount}件削除済み。`)
                             await TweetsXer.sleep(1000)
                         }
+                        resolve('timeout')
+                    }
+                    // [FIX 4] その他のエラーでもresolveして止まらないようにする
+                    else {
+                        console.log(`Unexpected error: ${error.name}: ${error.message}`)
                         resolve('error')
                     }
                 }
@@ -399,13 +558,17 @@
             while (this.tIds.length > 0) {
                 this.tId = this.tIds.pop()
                 await this.sendRequest(this.baseUrl + this.deleteURL)
+                if (this.dCount % this.SAVE_INTERVAL === 0) this.saveProgress()
             }
             this.tId = ''
             this.updateProgressBar()
+            this.clearProgress()
+            this.updateInfo(`完了！ ${this.dCount}件削除${this.sCount > 0 ? ` / ${this.sCount}件スキップ（削除済み等）` : ''}`)
+            console.log(`Finished. Deleted ${this.dCount}, skipped ${this.sCount}. Progress cleared.`)
         },
 
         async deleteFavs() {
-            this.updateTitle('TweetXer: Deleting Favs')
+            this.updateTitle('TweetXer: いいねを削除中')
             // 500 unfavs per 15 Minutes
             // x-rate-limit-remaining
             // x-rate-limit-reset
@@ -413,10 +576,14 @@
             while (this.tIds.length > 0) {
                 this.tId = this.tIds.pop()
                 await this.sendRequest(this.baseUrl + this.unfavURL)
+                if (this.dCount % this.SAVE_INTERVAL === 0) this.saveProgress()
             }
             this.tId = ''
             this.updateTitle('TweetXer')
             this.updateProgressBar()
+            this.clearProgress()
+            this.updateInfo(`完了！ ${this.dCount}件のFavを削除${this.sCount > 0 ? ` / ${this.sCount}件スキップ` : ''}`)
+            console.log(`Finished. Deleted ${this.dCount} favs, skipped ${this.sCount}. Progress cleared.`)
         },
 
         async deleteDMs() {
@@ -426,9 +593,13 @@
                     this.baseUrl + this.deleteMessageURL,
                     body = `{\"variables\":{\"messageId\":\"${this.tId}\"},\"requestId\":\""}`
                 )
+                if (this.dCount % this.SAVE_INTERVAL === 0) this.saveProgress()
             }
             this.tId = ''
             this.updateProgressBar()
+            this.clearProgress()
+            this.updateInfo(`完了！ ${this.dCount}件のDMを削除しました。`)
+            console.log(`Finished. Deleted ${this.dCount} DMs. Progress cleared.`)
         },
 
         async deleteConvos() {
@@ -456,6 +627,7 @@
                 if (response.status == 204) {
                     TweetsXer.dCount++
                     TweetsXer.updateProgressBar()
+                    if (TweetsXer.dCount % TweetsXer.SAVE_INTERVAL === 0) TweetsXer.saveProgress()
 
                     if (response.headers.get('x-rate-limit-remaining') != null && response.headers.get('x-rate-limit-remaining') < 1) {
                         console.log('rate limit hit')
@@ -464,7 +636,7 @@
                         let sleeptime = TweetsXer.ratelimitreset - Math.floor(Date.now() / 1000)
                         while (sleeptime > 0) {
                             sleeptime = TweetsXer.ratelimitreset - Math.floor(Date.now() / 1000)
-                            TweetsXer.updateInfo(`Ratelimited. Waiting ${sleeptime} seconds. ${TweetsXer.dCount} deleted.`)
+                            TweetsXer.updateInfo(`レート制限中。あと${sleeptime}秒待機。${TweetsXer.dCount}件削除済み。`)
                             await TweetsXer.sleep(1000)
                         }
                     }
@@ -476,7 +648,7 @@
                     let sleeptime = 60 * 5 // is that enough?
                     while (sleeptime > 0) {
                         sleeptime--
-                        TweetsXer.updateInfo(`Ratelimited. Waiting ${sleeptime} seconds. ${TweetsXer.dCount} deleted.`)
+                        TweetsXer.updateInfo(`レート制限中。あと${sleeptime}秒待機。${TweetsXer.dCount}件削除済み。`)
                         await TweetsXer.sleep(1000)
                     }
 
@@ -487,6 +659,9 @@
             }
             this.tId = ''
             this.updateProgressBar()
+            this.clearProgress()
+            this.updateInfo(`完了！ ${this.dCount}件のDM会話を削除しました。`)
+            console.log(`Finished. Deleted ${this.dCount} conversations. Progress cleared.`)
         },
 
         async getTweetCount() {
@@ -549,7 +724,7 @@
                 TweetsXer.TweetCount = 1000000 // prevents Tweets from being skipped because if tweet count of 0
 
             }
-            this.updateInfo('Select your tweet-headers.js from your Twitter Data Export to start the deletion of all your Tweets.')
+            this.updateInfo('Twitterデータエクスポートの tweet-headers.js を選択して、ツイートの削除を開始してください。')
             console.log(TweetsXer.TweetCount + " Tweets on profile.")
             console.log("You can close the console now to reduce the memory usage.")
             console.log("Reopen the console if there are issues to see if an error shows up.")
